@@ -766,18 +766,22 @@ async function pedirSenha(){
   const d=$('pwd'); $('pwdIn').value=''; d.returnValue=''; d.showModal();
   d.onclose=()=>{ if(d.returnValue==='ok'){ senha=$('pwdIn').value.trim(); try{ localStorage.setItem('painel-senha',senha); }catch(_){} toast('Senha guardada neste aparelho. Faça a alteração de novo.'); } };
 }
-let loading=false, lastErr=false;
+let loading=false, lastErr=false, preview=false;
+function usarSeed(){ COLS.forEach(c=>{ S[c]=Object.entries(SEED[c]||{}).map(([id,d])=>Object.assign({id},d)); loaded.add(c); }); S.cfg=Object.assign({id:'geral'},(SEED.config||{}).geral||{}); }
 async function load(){
   if(loading) return; loading=true;
   try{
     const res = await fetch(API_URL+'?action=list&t='+Date.now());
     const j = await res.json();
     if(!j.ok) throw new Error('resposta');
-    COLS.forEach(c=>{ S[c]=(j.data[c]||[]); loaded.add(c); });
-    const g=(j.data.config||[]).find(x=>x.id==='geral'); S.cfg=g||{id:'geral'};
+    const vazio = COLS.every(c=>!(j.data[c]||[]).length);
+    if(vazio){ usarSeed(); preview=true; }
+    else { COLS.forEach(c=>{ S[c]=(j.data[c]||[]); loaded.add(c); }); const g=(j.data.config||[]).find(x=>x.id==='geral'); S.cfg=g||{id:'geral'}; preview=false; }
+    canWrite=!preview; document.body.classList.toggle('can-edit',canWrite);
     lastErr=false; afterLoad(); schedule();
   }catch(e){
-    if(!lastErr) setStatus('Não foi possível carregar os dados da planilha. Confira a internet e recarregue a página.','warn');
+    if(!S.lancamentos.length){ usarSeed(); canWrite=false; document.body.classList.remove('can-edit'); if(!ready){ ready=true; } schedule(); }
+    if(!lastErr) setStatus('Não foi possível conectar à planilha do Google. Mostrando os dados de 7/10/2026, sem edição. Confira se o Apps Script está implantado com acesso para Qualquer pessoa.','warn');
     lastErr=true;
   }finally{ loading=false; }
 }
@@ -788,6 +792,7 @@ async function importar(btn){
 }
 render();
 if(!apiOk){
+  usarSeed(); ready=true; schedule();
   setStatus('Falta ligar o painel à planilha do Google. Cole o endereço do Apps Script na linha API_URL do arquivo index.html.','warn');
 } else {
   canWrite = true; document.body.classList.add('can-edit');
@@ -797,8 +802,8 @@ if(!apiOk){
 }
 function afterLoad(){
   if(!ready){ ready=true; requestAnimationFrame(()=>requestAnimationFrame(()=>schedule())); }
-  const empty = COLS.every(c=>!S[c].length);
-  if(empty) setStatus('A planilha ainda está vazia. <button type="button" class="btn primary" id="btnImp">Carregar dados iniciais</button> <span>(posição da planilha em 7/10/2026)</span>','warn',true), $('btnImp').addEventListener('click',e=>importar(e.currentTarget));
+  const empty = preview;
+  if(empty) setStatus('Você está vendo os dados de 7/10/2026, mas a planilha do Google ainda está vazia. Clique para gravar esses dados nela e liberar a edição: <button type="button" class="btn primary" id="btnImp">Carregar dados iniciais</button>','warn',true), $('btnImp').addEventListener('click',e=>importar(e.currentTarget));
   else setStatus('Qualquer pessoa com este link pode alterar. As mudanças aparecem para todos em até 30 segundos.','info');
 }
 </script>
